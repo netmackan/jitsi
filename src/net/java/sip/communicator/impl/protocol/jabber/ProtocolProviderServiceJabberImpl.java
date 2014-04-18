@@ -1160,15 +1160,15 @@ public class ProtocolProviderServiceJabberImpl
                 {
                     final StringBuilder buff = new StringBuilder();
                     buff.append("Available TLS protocols and algorithms:\n");
-                    buff.append("Default protocols: ");
+                    buff.append("Default protocols:       ");
                     buff.append(Arrays.toString(
                         sslContext.getDefaultSSLParameters().getProtocols()));
                     buff.append("\n");
-                    buff.append("Supported protocols: ");
+                    buff.append("Supported protocols:     ");
                     buff.append(Arrays.toString(
                         sslContext.getSupportedSSLParameters().getProtocols()));
                     buff.append("\n");
-                    buff.append("Default cipher suites: ");
+                    buff.append("Default cipher suites:   ");
                     buff.append(Arrays.toString(
                             sslContext.getDefaultSSLParameters()
                             .getCipherSuites()));
@@ -1181,6 +1181,58 @@ public class ProtocolProviderServiceJabberImpl
                 }
 
                 connection.setCustomSslContext(sslContext);
+                
+                // Read TLS properties from configuration
+                final String whitelistedValue = 
+                        JabberActivator.getConfigurationService().getString(
+                        CertificateService.PNAME_TLS_WHITELISTED_CIPHERSUITES);
+                final String blacklistedValue = 
+                        JabberActivator.getConfigurationService().getString(
+                        CertificateService.PNAME_TLS_BLACKLISTED_CIPHERSUITES);
+                final String orderingValue = 
+                        JabberActivator.getConfigurationService().getString(
+                        CertificateService.PNAME_TLS_CIPHERSUITES_ORDER);
+                
+                // Parse as sets and lists
+                final Set<String> blacklisted = new HashSet<String>(
+                        blacklistedValue == null 
+                                ? Collections.<String>emptyList() 
+                                : Arrays.asList(blacklistedValue.split(",")));
+                final Set<String> whitelisted = new HashSet<String>(
+                        whitelistedValue == null 
+                                ? Collections.<String>emptyList() 
+                                : Arrays.asList(whitelistedValue.split(",")));
+                final List<String> ordering = new LinkedList<String>(
+                        orderingValue == null 
+                                ? Collections.<String>emptyList()
+                                : Arrays.asList(orderingValue.split(",")));
+
+                final List<String> defaultSuiteList = new LinkedList<String>(
+                        Arrays.asList(sslContext.getDefaultSSLParameters()
+                                .getCipherSuites()));
+                
+                final Set<String> supportedSuiteList = new HashSet<String>(
+                        Arrays.asList(sslContext.getSupportedSSLParameters()
+                                .getCipherSuites()));
+                
+                // Compute the final cipher suites list
+                final List<String> enabledCipherSuites = 
+                        CipherSuiteHelper.computeFinalList(
+                                defaultSuiteList, 
+                                supportedSuiteList, 
+                                blacklisted, 
+                                whitelisted, 
+                                ordering,
+                                true);
+                if (logger.isDebugEnabled())
+                {
+                    logger.debug("Final enabled suite list: " 
+                            + enabledCipherSuites);
+                }
+                
+                // Set the list to be used
+                connection.setEnabledCipherSuites(enabledCipherSuites.toArray(
+                        new String[enabledCipherSuites.size()]));
             }
             else if (tlsRequired)
                 throw new XMPPException(
@@ -1251,7 +1303,7 @@ public class ProtocolProviderServiceJabberImpl
                 final SSLSocket sslSocket = (SSLSocket) connection.getSocket();
                 StringBuilder buff = new StringBuilder();
                 buff.append("Chosen TLS protocol and algorithm:\n")
-                        .append("Protocol: ").append(sslSocket.getSession()
+                        .append("Protocol:     ").append(sslSocket.getSession()
                         .getProtocol()).append("\n")
                         .append("Cipher suite: ").append(sslSocket.getSession()
                         .getCipherSuite());

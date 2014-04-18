@@ -9,6 +9,13 @@ package net.java.sip.communicator.plugin.certconfig;
 import java.awt.*;
 import java.awt.event.*;
 import java.security.*;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.Set;
+import javax.net.ssl.SSLContext;
 
 import javax.swing.*;
 import javax.swing.border.*;
@@ -30,6 +37,12 @@ public class CertConfigPanel
     extends TransparentPanel
     implements ConfigurationForm, ActionListener, ListSelectionListener
 {
+    /**
+     * Logger of this class.
+     */
+    private static final Logger logger 
+            = Logger.getLogger(CertConfigPanel.class);
+    
     // ------------------------------------------------------------------------
     // Fields
     // ------------------------------------------------------------------------
@@ -48,6 +61,7 @@ public class CertConfigPanel
     private JRadioButton rdoUseJava;
     private SIPCommCheckBox chkEnableRevocationCheck;
     private SIPCommCheckBox chkEnableOcsp;
+    private CipherSuitesPanel cipherPanel;
 
     // ------------------------------------------------------------------------
     // initialization
@@ -65,15 +79,21 @@ public class CertConfigPanel
 
     private void initComponents()
     {
-        this.setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
-
+        this.setLayout(new BorderLayout());
+        
+        TransparentPanel oldPanel = new TransparentPanel();
+        BoxLayout boxLayout = new BoxLayout(oldPanel, BoxLayout.Y_AXIS);
+        oldPanel.setLayout(boxLayout);
+        SIPCommTabbedPane tabbedPane = new SIPCommTabbedPane();
+        tabbedPane.add("Validation", oldPanel);
+        
         // trusted root CA source selection
         if (OSUtils.IS_WINDOWS)
         {
             JPanel pnlCertConfig = new TransparentPanel(new GridLayout(2, 1));
             pnlCertConfig.setBorder(BorderFactory.createTitledBorder(
                 R.getI18NString("plugin.certconfig.TRUSTSTORE_CONFIG")));
-            add(pnlCertConfig);
+            oldPanel.add(pnlCertConfig);
 
             ButtonGroup grpTrustStore = new ButtonGroup();
 
@@ -106,7 +126,7 @@ public class CertConfigPanel
         JPanel pnlRevocation = new TransparentPanel(new GridLayout(2, 1));
         pnlRevocation.setBorder(BorderFactory.createTitledBorder(
             R.getI18NString("plugin.certconfig.REVOCATION_TITLE")));
-        add(pnlRevocation);
+        oldPanel.add(pnlRevocation);
 
         chkEnableRevocationCheck = new SIPCommCheckBox(
             R.getI18NString("plugin.certconfig.REVOCATION_CHECK_ENABLED"));
@@ -128,7 +148,7 @@ public class CertConfigPanel
         JPanel pnlCertList = new TransparentPanel(new BorderLayout());
         pnlCertList.setBorder(BorderFactory.createTitledBorder(
             R.getI18NString("plugin.certconfig.CERT_LIST_TITLE")));
-        add(pnlCertList);
+        tabbedPane.add("Client auth", pnlCertList);
 
         JLabel lblNote = new JLabel();
         lblNote.setText(
@@ -160,6 +180,55 @@ public class CertConfigPanel
         cmdEdit.setText(R.getI18NString("service.gui.EDIT"));
         cmdEdit.addActionListener(this);
         buttons.add(cmdEdit);
+        
+        final String whitelistedValue 
+                = CertConfigActivator.getConfigService().getString(
+                        CertificateService.PNAME_TLS_WHITELISTED_CIPHERSUITES);
+        final String blacklistedValue 
+                = CertConfigActivator.getConfigService().getString(
+                        CertificateService.PNAME_TLS_BLACKLISTED_CIPHERSUITES);
+        final String orderingValue 
+                = CertConfigActivator.getConfigService().getString(
+                        CertificateService.PNAME_TLS_CIPHERSUITES_ORDER);
+
+        Set<String> blacklisted = new HashSet<String>(blacklistedValue == null
+                ? Collections.<String>emptyList()
+                : Arrays.asList(blacklistedValue.split(",")));
+
+        Set<String> whitelisted = new HashSet<String>(whitelistedValue == null
+                ? Collections.<String>emptyList() 
+                : Arrays.asList(whitelistedValue.split(",")));
+
+        java.util.List<String> ordering = new LinkedList<String>(
+                orderingValue == null 
+                        ? Collections.<String>emptyList() 
+                        : Arrays.asList(orderingValue.split(",")));
+
+        java.util.List<String> defaultSuiteList;
+        Set<String> supportedSuiteList;
+
+        SSLContext sslContext;
+        try {
+            sslContext = CertConfigActivator.getCertService().getSSLContext();
+            defaultSuiteList = new LinkedList<String>(Arrays.asList(
+                    sslContext.getDefaultSSLParameters().getCipherSuites()));
+            supportedSuiteList = new HashSet<String>(Arrays.asList(
+                    sslContext.getSupportedSSLParameters().getCipherSuites()));
+        } catch (GeneralSecurityException ex) {
+            logger.error("Unable to get TLS parameters", ex);
+            defaultSuiteList = Collections.emptyList();
+            supportedSuiteList = Collections.emptySet();
+        }
+                
+        cipherPanel = new CipherSuitesPanel(defaultSuiteList, 
+                new LinkedList<String>(supportedSuiteList), 
+                new LinkedList<String>(blacklisted), 
+                new LinkedList<String>(whitelisted), 
+                Arrays.<String>asList(), 
+                ordering);
+        cipherPanel.addConfigurationChangedListener(this);
+        tabbedPane.add("Cipher Suites", cipherPanel);
+        add(tabbedPane);
     }
 
     // ------------------------------------------------------------------------
@@ -237,6 +306,33 @@ public class CertConfigPanel
             Security.setProperty("ocsp.enable",
                 new Boolean(chkEnableOcsp.isSelected()).toString());
         }
+        if (e.getSource() == cipherPanel)
+        {
+            CertConfigActivator.getConfigService().setProperty(
+                    CertificateService.PNAME_TLS_WHITELISTED_CIPHERSUITES, 
+                    toString(cipherPanel.getWhiteList()));
+            CertConfigActivator.getConfigService().setProperty(
+                    CertificateService.PNAME_TLS_BLACKLISTED_CIPHERSUITES, 
+                    toString(cipherPanel.getBlackList()));
+            CertConfigActivator.getConfigService().setProperty(
+                    CertificateService.PNAME_TLS_CIPHERSUITES_ORDER, 
+                    toString(cipherPanel.getOrderingList()));
+            
+        }
+    }
+    
+    private String toString(java.util.List<String> list)
+    {
+        StringBuilder sb = new StringBuilder();
+        Iterator<String> iterator = list.iterator();
+        while (iterator.hasNext())
+        {
+            sb.append(iterator.next());
+            if (iterator.hasNext()) {
+                sb.append(",");
+            }
+        }
+        return sb.toString();
     }
 
     // ------------------------------------------------------------------------

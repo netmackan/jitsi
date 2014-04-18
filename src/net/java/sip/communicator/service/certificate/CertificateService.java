@@ -82,6 +82,30 @@ public interface CertificateService
     public static final String PNAME_OCSP_ENABLED =
         "net.java.sip.communicator.service.cert.ocsp.enabled";
 
+    /**
+     * Property with set of blacklisted TLS cipher suites.
+     * Suites in this list will not be enabled.
+     */
+    public static final String PNAME_TLS_BLACKLISTED_CIPHERSUITES
+        = "net.java.sip.communicator.service.tls.BLACKLISTED_CIPHERSUITES";
+    
+    /**
+     * Property with set of whitelisted TLS cipher suites.
+     * Suites in this list will be enabled (if they are supported).
+     */
+    public static final String PNAME_TLS_WHITELISTED_CIPHERSUITES
+        = "net.java.sip.communicator.service.tls.WHITELISTED_CIPHERSUITES";
+    
+    /**
+     * Property with ordered list of preferred cipher suites.
+     * If enabled cipher suites will be listed in this order. Enabled 
+     * cipher suites not in the list will be appended to the end of the list.
+     * If unset or empty the application default list of cipher suites will be
+     * used.
+     */
+    public static final String PNAME_TLS_CIPHERSUITES_ORDER
+        = "net.java.sip.communicator.service.tls.CIPHERSUITES_ORDER";
+
     // ------------------------------------------------------------------------
     // constants
     // ------------------------------------------------------------------------
